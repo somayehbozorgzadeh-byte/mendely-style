@@ -158,7 +158,7 @@ def build(p, Eg, Ec, n=120):
         dc += dr
         dc += klat * (bulk - c)
         sg, _ = electrode_flux(c[:, 0], hcell[0], p, Eg, Ec, "gen")
-        sc, _ = electrode_flux(c[:, -1], hcell[-1], p, Eg, Ec, "col")
+        sc, _ = electrode_flux(c[:, -1], hcell[-1], p, Eg, Ec(t) if callable(Ec) else Ec, "col")
         dc[:, 0] += sg / hcell[0]
         dc[:, -1] += sc / hcell[-1]
         return dc.ravel()
