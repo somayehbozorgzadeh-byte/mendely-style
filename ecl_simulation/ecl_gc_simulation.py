@@ -80,9 +80,9 @@ def electrode_flux(c0, h, p, Eg, Ec, which):
     electron flux (cathodic negative) for the electrode. c0: concentrations in the
     cell touching the electrode; h: width of that cell."""
     D = p["D"]
-    s = np.zeros(nS)
-    ne = 0.0   # mol e- /m^2/s consumed (+) or released (-): i = F*ne cathodic positive
     c = np.maximum(c0, 0.0)
+    s = np.zeros_like(c)   # works for c0 of shape (nS,) or (nS, k) (vectorised over electrode cells)
+    ne = 0.0   # mol e- /m^2/s consumed (+) or released (-): i = F*ne cathodic positive
     if which == "gen":
         E = Eg
         # O2 + e <-> O2.-
