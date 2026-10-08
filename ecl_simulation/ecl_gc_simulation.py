@@ -107,7 +107,7 @@ def electrode_flux(c0, h, p, Eg, Ec, which):
         j = (kf * c[iD] - kb * c[iRad]) / (1 + kf * h / (2 * D[iD]) + kb * h / (2 * D[iRad]))
         s[iD] -= j; s[iRad] += j; ne += j
         # O2.- <-> O2 + e   (re-oxidation of superoxide)
-        kf, kb = hl(E, p["E0_O2"], p["k0_O2"], p["a_O2"])
+        kf, kb = hl(E, p["E0_O2"], p.get("k0_O2_col", p["k0_O2"]), p["a_O2"])
         j = (kf * c[iO2] - kb * c[iSO]) / (1 + kf * h / (2 * D[iO2]) + kb * h / (2 * D[iSO]))
         s[iO2] -= j; s[iSO] += j; ne += j
         # H2O2 -> O2 + 2H+ + 2e (irreversible, 2 e-)
@@ -122,7 +122,7 @@ def solution_rates(c, p):
     ECL photon-generation rate profile [photons-equivalents mol/m^3/s]."""
     c = np.maximum(c, 0.0)
     fH = 1.0 / (1.0 + 10 ** (p["pH"] - p["pKa_HO2"]))     # fraction as HO2.
-    kd = (p["k_HO2_O2m"] * fH * (1 - fH) + p["k_HO2_HO2"] * fH ** 2) * 1e-3   # per event, m^3/mol/s
+    kd = (p["k_HO2_O2m"] * fH * (1 - fH) + p["k_HO2_HO2"] * fH ** 2) * 1e-3 * p.get("kd_scale", 1.0)   # per event, m^3/mol/s
     r_d = kd * c[iSO] ** 2                                # 2 O2.- -> H2O2 + O2
     r_e = p["k_ecl"] * 1e-3 * c[iRad] * c[iSO]            # L.- + O2.- -> 3-APA*
     r_h = p["k_daq_hp"] * 1e-3 * c[iD] * c[iHP]           # L + H2O2 -> 3-APA*
