@@ -30,6 +30,6 @@ def one(a):
 
 if __name__ == "__main__":
     with Pool(4) as p:
-        res = p.map(one, DEVICES)
+        res = p.map(one, DEVICES if K == 1e4 else [d for d in DEVICES if d[2] == 300])
     json.dump(res, open(f"cathodic_sameH_k{K:.0e}.json", "w"))
     print("ALL DONE")
