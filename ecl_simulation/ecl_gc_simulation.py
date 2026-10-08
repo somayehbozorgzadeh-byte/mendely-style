@@ -129,13 +129,14 @@ def solution_rates(c, p):
     r_p = p["k_disp"] * 1e-3 * c[iRad] ** 2               # 2 L.- -> L + LH-
     r_o = p["k_rad_o2"] * 1e-3 * c[iRad] * c[iO2]         # L.- + O2 -> L + O2.-
     r_l = p["k_daq_dec"] * c[iD]
+    r_x = p.get("k_lum_so", 0.0) * 1e-3 * c[iLH] * c[iSO]  # LH- + O2.- -> L.- + H2O2 (homogeneous luminol oxidation; cathodic ECL route)
     dc = np.zeros_like(c)
-    dc[iSO] += -2 * r_d - r_e + r_o
+    dc[iSO] += -2 * r_d - r_e + r_o - r_x
     dc[iO2] += r_d - r_o
-    dc[iHP] += r_d - r_h
-    dc[iRad] += -r_e - 2 * r_p - r_o
+    dc[iHP] += r_d - r_h + r_x
+    dc[iRad] += -r_e - 2 * r_p - r_o + r_x
     dc[iD] += r_p + r_o - r_h - r_l
-    dc[iLH] += r_p
+    dc[iLH] += r_p - r_x
     photons = p["phi"] * (r_e + r_h)
     return dc, photons
 
