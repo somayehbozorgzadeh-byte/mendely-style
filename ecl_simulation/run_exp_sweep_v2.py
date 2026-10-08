@@ -1,4 +1,4 @@
-"""Experimental protocol: generator stepped to -0.7 V and held 5 s with the collector at 0 V,
+"""Experimental protocol: generator stepped to -0.7 V and collector disconnected (open circuit) for 5 s,
 then collector swept 0 -> 0.8 V at 0.1 V/s (generator stays at -0.7 V)."""
 import json
 import numpy as np
@@ -15,8 +15,8 @@ def one(dev):
     L = (w + g) * 1e-6
     cell = Cell2D(m.PARAMS, w=w * 1e-6, g=g * 1e-6, Eg=EG, H=max(40e-6, 4 * L), nxs=(8, 18, 8), nz=30)
     tf = (E2 - E1) / V
-    # t < T_PRE: collector at E1 (generator already at EG); afterwards linear sweep
-    Ec = lambda t: E1 if t <= T_PRE else E1 + V * (t - T_PRE)
+    # t < T_PRE: collector at open circuit (None); afterwards linear sweep from E1
+    Ec = lambda t: None if t < T_PRE else E1 + V * (t - T_PRE)
     t = np.concatenate([np.linspace(0, T_PRE, 11)[:-1], T_PRE + np.linspace(0, tf, 161)])
     sol = cell.integrate(Ec, (0, T_PRE + tf), cell.y_bulk(), t)
     shape = (m.nS, cell.nx, cell.nz)

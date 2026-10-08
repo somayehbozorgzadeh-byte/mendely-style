@@ -74,7 +74,10 @@ class Cell2D:
     def fluxes(self, c, Ec):
         """net production [mol/m^2/s] of every species at electrode cells, and e- flux"""
         sg, ng = m.electrode_flux(c[:, self.gen, 0], self.hz[0], self.p, self.Eg, Ec, "gen")
-        sc, nc = m.electrode_flux(c[:, self.col, 0], self.hz[0], self.p, self.Eg, Ec, "col")
+        if Ec is None:   # collector disconnected (open circuit): no faradaic reaction
+            sc, nc = np.zeros_like(c[:, self.col, 0]), np.zeros(self.col.sum())
+        else:
+            sc, nc = m.electrode_flux(c[:, self.col, 0], self.hz[0], self.p, self.Eg, Ec, "col")
         return sg, ng, sc, nc
 
     def rhs(self, Ec_fun):
