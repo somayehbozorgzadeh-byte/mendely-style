@@ -15,7 +15,7 @@ def prep(w, g, k, zmax_um=8):
     L = (w + g) * 1e-6
     xr = np.linspace(0, L, 220); zr = np.linspace(zc[0], zmax_um * 1e-6, 140)
     P = np.stack(np.meshgrid(xr, zr, indexing="ij"), -1)
-    f = lambda a: RGI((xc, zc), a)(P)
+    f = lambda a: RGI((xc, zc), a, bounds_error=False, fill_value=None)(P)
     mir = lambda a: np.concatenate([a[::-1], a[1:]], 0)
     X = np.concatenate([-xr[::-1], xr[1:]]) * 1e6
     return dict(X=X, Z=zr * 1e6, so=mir(f(d["c"][SO][..., k])) * 1e3, rad=mir(f(d["c"][RAD][..., k])) * 1e6,
