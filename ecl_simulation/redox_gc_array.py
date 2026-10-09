@@ -155,3 +155,6 @@ class Array:
     @property
     def gen_area(self):
         return float(np.sum(self.Az[self.gen]) * self.scale)
+
+# Ferrocenecarboxylic acid at pH 7.4 (deprotonated, FcCOO- / FcCOO): literature-typical values, edit to your data.
+FCCOOH = dict(c_bulk=1.0, D_R=5.7e-10, D_O=5.7e-10, E0=0.32, k0=1e-3, alpha=0.5)
