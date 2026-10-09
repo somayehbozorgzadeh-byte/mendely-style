@@ -34,7 +34,7 @@ def _grow(a, h0, L, r=1.15):
 
 class Array:
     def __init__(self, geometry="ida", w=2e-6, g=2e-6, n_pairs=25, r_in=8e-6, finger_len=200e-6,
-                 far=500e-6, ncell=6, dz0=20e-9, p=FCMEOH):
+                 far=500e-6, ncell=6, dz0=20e-9, p=FCMEOH, thickness=0.0):
         self.geo, self.p, self.w, self.g, self.N, self.Lf = geometry, dict(p), w, g, n_pairs, finger_len
         # electrode layout along x (or r): G g C g G g C ...
         x0 = r_in if geometry == "spiral" else 0.0
@@ -55,7 +55,11 @@ class Array:
             xf.append(_seg(a, b, ncell)[1:])
         xf.append(_grow(x, 0.3e-6, far)[1:])
         self.xf = np.unique(np.concatenate(xf))
-        self.zf = _grow(0.0, dz0, far, r=1.18)
+        self.t_el = thickness
+        if thickness > 0:      # resolve the electrode height with 5 cells, then grow geometrically
+            self.zf = np.concatenate([np.linspace(0, thickness, 6), _grow(thickness, dz0, far - thickness, r=1.18)[1:]])
+        else:
+            self.zf = _grow(0.0, dz0, far, r=1.18)
         self.xc = 0.5 * (self.xf[1:] + self.xf[:-1]); self.zc = 0.5 * (self.zf[1:] + self.zf[:-1])
         self.hx, self.hz = np.diff(self.xf), np.diff(self.zf)
         self.nx, self.nz = len(self.hx), len(self.hz)
@@ -64,6 +68,7 @@ class Array:
             kind[(self.xc > a) & (self.xc < b)] = k
         self.gen, self.col = kind == "G", kind == "C"
         self._geometry_factors()
+        self._electrode_faces()
         self._assemble()
 
     def _geometry_factors(self):
@@ -78,6 +83,30 @@ class Array:
             self.scale = self.Lf
         self.Vol = self.Az[:, None] * hz[None, :]
 
+    def _electrode_faces(self):
+        """Fluid cells that touch an electrode: list per electrode of (i, j, area, half-distance)."""
+        nx, nz = self.nx, self.nz
+        el = self.gen | self.col
+        self.solid = np.zeros((nx, nz), bool)
+        if self.t_el > 0:
+            self.solid[el, :] = (self.zc < self.t_el)[None, :]
+        self.faces = {}
+        for name, mask in (("G", self.gen), ("C", self.col)):
+            I, J, A, H = [], [], [], []
+            if self.t_el == 0:
+                i = np.where(mask)[0]
+                I += list(i); J += [0] * len(i); A += list(self.Az[i]); H += list(self.hz[0] / 2 * np.ones(len(i)))
+            else:
+                jt = int(np.searchsorted(self.zf, self.t_el - 1e-15))            # first fluid row above the electrode
+                i = np.where(mask)[0]
+                I += list(i); J += [jt] * len(i); A += list(self.Az[i]); H += list(self.hz[jt] / 2 * np.ones(len(i)))
+                for j in range(jt):                                            # side walls
+                    for ii in np.where(mask)[0]:
+                        for nb, face in ((ii - 1, ii), (ii + 1, ii + 1)):
+                            if 0 <= nb < nx and not el[nb]:
+                                I.append(nb); J.append(j); A.append(self.Ax_face[face, j]); H.append(self.hx[nb] / 2)
+            self.faces[name] = (np.array(I), np.array(J), np.array(A), np.array(H))
+
     def idx(self, s, i, j):
         return (s * self.nx + i) * self.nz + j
 
@@ -91,10 +120,12 @@ class Array:
             # x-direction internal faces
             dx = np.diff(self.xc)
             Gx = D * self.Ax_face[1:-1, :] / dx[:, None]                  # conductance (nx-1, nz)
+            Gx = Gx * ~(self.solid[:-1] | self.solid[1:])
             a = self.idx(s, I[:-1], J[:-1]).ravel(); b = self.idx(s, I[1:], J[1:]).ravel(); g = Gx.ravel()
             rows += [a, b, a, b]; cols += [a, b, b, a]; vals += [g, g, -g, -g]
             dzc = np.diff(self.zc)
             Gz = D * self.Az[:, None] / dzc[None, :]
+            Gz = Gz * ~(self.solid[:, :-1] | self.solid[:, 1:])
             a = self.idx(s, I[:, :-1], J[:, :-1]).ravel(); b = self.idx(s, I[:, 1:], J[:, 1:]).ravel(); g = Gz.ravel()
             rows += [a, b, a, b]; cols += [a, b, b, a]; vals += [g, g, -g, -g]
             # far boundaries (Dirichlet bulk): top and the outer x side(s)
@@ -109,23 +140,22 @@ class Array:
         self.rhs_b = rhs_b
         self.V = np.concatenate([self.Vol.ravel(), self.Vol.ravel()])
 
-    def _bv(self, E, mask):
-        """Linearised electrode terms: net oxidation flux j = kox*cR - kred*cO (with half-cell correction)."""
-        p, h = self.p, self.hz[0] / 2
+    def _bv(self, E, which):
+        """Linearised electrode terms on every electrode face: net oxidation flux j = a*cR - b*cO (half-cell corrected)."""
+        p = self.p
+        I, J, A, H = self.faces[which]
         x = f * (E - p["E0"])
         kred, kox = p["k0"] * np.exp(-p["alpha"] * x), p["k0"] * np.exp((1 - p["alpha"]) * x)
-        den = 1 + kox * h / p["D_R"] + kred * h / p["D_O"]
-        i = np.where(mask)[0]
-        return i, kox / den, kred / den
+        den = 1 + kox * H / p["D_R"] + kred * H / p["D_O"]
+        return I, J, A, kox / den, kred / den
 
     def electrode_matrix(self, Eg, Ec):
         rows, cols, vals = [], [], []
-        for E, mask in ((Eg, self.gen), (Ec, self.col)):
+        for E, which in ((Eg, "G"), (Ec, "C")):
             if E is None:
                 continue
-            i, a, b = self._bv(E, mask)
-            A = self.Az[i]
-            r, o = self.idx(0, i, 0), self.idx(1, i, 0)
+            i, j, A, a, b = self._bv(E, which)
+            r, o = self.idx(0, i, j), self.idx(1, i, j)
             # R consumed at rate a*cR - b*cO ; O produced at the same rate
             rows += [r, r, o, o]; cols += [r, o, r, o]; vals += [a * A, -b * A, -a * A, b * A]
         N = len(self.V)
@@ -133,12 +163,12 @@ class Array:
             return coo_matrix((N, N)).tocsr()
         return coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(N, N)).tocsr()
 
-    def current(self, c, E, mask):
+    def current(self, c, E, which):
         if E is None:
             return 0.0
-        i, a, b = self._bv(E, mask)
-        cR = c[self.idx(0, i, 0)]; cO = c[self.idx(1, i, 0)]
-        return F * np.sum((a * cR - b * cO) * self.Az[i]) * self.scale        # A, anodic positive
+        i, j, A, a, b = self._bv(E, which)
+        cR = c[self.idx(0, i, j)]; cO = c[self.idx(1, i, j)]
+        return F * np.sum((a * cR - b * cO) * A) * self.scale        # A, anodic positive
 
     def cv(self, Eg_fun, Ec_fun, t_end, dt):
         c = np.concatenate([np.full(self.nx * self.nz, self.p["c_bulk"]), np.zeros(self.nx * self.nz)])
@@ -149,7 +179,7 @@ class Array:
             Eg, Ec = Eg_fun(t), Ec_fun(t)
             A = (Mv + self.A0 + self.electrode_matrix(Eg, Ec)).tocsc()
             c = splu(A).solve(self.V / dt * c + self.rhs_b)
-            out.append((t, Eg, Ec, self.current(c, Eg, self.gen), self.current(c, Ec, self.col)))
+            out.append((t, Eg, Ec, self.current(c, Eg, "G"), self.current(c, Ec, "C")))
         return np.array(out, dtype=object), c
 
     @property
