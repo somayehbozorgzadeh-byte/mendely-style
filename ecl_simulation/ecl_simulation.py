@@ -45,22 +45,24 @@ def hmax(ph, h2o2_mM):
     return h2o2_mM * 1e3 / (1 + 10 ** (PKA_H2O2 - ph))     # uM HO2-
 
 # ---- grid -------------------------------------------------------------------
-def graded(n_ref, d0, g, total, from_end):
+def graded(n_ref, d0, g, total, from_end, coarse=0.9):
     w, x = [], 0.0
     d = d0
     while x + d < total * 0.999 and len(w) < n_ref:
         w.append(d); x += d; d *= g
     rest = total - x
-    n_rest = max(1, int(np.ceil(rest / 0.9)))
+    n_rest = max(1, int(np.ceil(rest / coarse)))
     w += [rest / n_rest] * n_rest
     return np.array(w[::-1] if from_end else w)
 
-def build():
-    wr = graded(60, 0.04, 1.18, RI, True)                    # fine at the wall
+def build(res=1.0):
+    """res scales the resolution: wall cell 0.04/res um, growth 1.18**(1/res),
+    z spacing 0.5/res um, so res=2 roughly halves every cell size."""
+    wr = graded(int(60 * res * 2), 0.04 / res, 1.18 ** (1 / res), RI, True, 0.9 / res)
     r_e = np.r_[0, np.cumsum(wr)]
-    r_e = np.r_[r_e, np.linspace(RI, RO, 5)[1:]]
-    z_in = np.linspace(0, LT, 22)
-    z_out = LT + np.cumsum(np.r_[graded(40, 0.5, 1.2, ZTOP, False)])
+    r_e = np.r_[r_e, np.linspace(RI, RO, 5 + int(round(4 * (res - 1))))[1:]]
+    z_in = np.linspace(0, LT, int(round(21 * res)) + 1)
+    z_out = LT + np.cumsum(np.r_[graded(int(40 * res * 2), 0.5 / res, 1.2 ** (1 / res), ZTOP, False, 0.9 / res)])
     z_e = np.r_[z_in, z_out]
     rc, zc = 0.5 * (r_e[1:] + r_e[:-1]), 0.5 * (z_e[1:] + z_e[:-1])
     dr, dz = np.diff(r_e), np.diff(z_e)
