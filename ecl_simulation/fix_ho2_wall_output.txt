@@ -1,0 +1,15 @@
+Paper (10 mM H2O2): low pH max~10, wall ~8-10 along whole wall, ctr/edge~0.2, TEL>9.1 | high pH max~30, ring, TEL~4.1
+
+mode                                 pka  pH    max wall z=1    z=5    z=9  mouth ctr/edge  TEL5%
+as printed (wall consumes HO2-)     11.6   9  10.42     0.07   0.07   0.61   8.32    0.072   9.05
+as printed (wall consumes HO2-)     11.6  12  19.46    17.73  18.45  19.40  12.59    0.000   1.85
+no wall consumption of HO2-         11.6   9  10.42     0.07   0.07   0.62   8.34    0.070   9.05
+no wall consumption of HO2-         11.6  12  19.27    17.12  17.96  19.24  12.27    0.001   1.85
+[HO2-] pinned at wall (Dirichlet)   11.6   9  10.86     9.73  10.18  10.74   5.60    0.001   2.91
+[HO2-] pinned at wall (Dirichlet)   11.6  12  19.27    17.12  17.96  19.24  12.27    0.001   1.85
+as printed (wall consumes HO2-)    -50.0   9  39.38    31.35  33.11  38.16  27.99    0.000   0.93
+as printed (wall consumes HO2-)    -50.0  12  20.30    17.08  18.01  20.26  13.81    0.001   1.85
+no wall consumption of HO2-        -50.0   9  39.66    31.85  33.57  38.49  28.15    0.000   0.93
+no wall consumption of HO2-        -50.0  12  20.86    17.94  18.79  20.83  13.97    0.000   1.85
+[HO2-] pinned at wall (Dirichlet)  -50.0   9  39.69    31.89  33.61  38.52  28.16    0.000   0.93
+[HO2-] pinned at wall (Dirichlet)  -50.0  12  20.86    17.94  18.79  20.83  13.97    0.000   1.85
