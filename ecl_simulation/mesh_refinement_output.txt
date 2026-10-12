@@ -1,0 +1,38 @@
+
+res=0.5: 14 x 22 cells, wall cell 0.0800 um
+  pH    9    1 mM: TEL mid=4.594 avg=1.573 centre/wall=0.1744 max hv=1321 total hv=9.639e+05 (1s)
+  pH    9   10 mM: TEL mid=3.242 avg=1.573 centre/wall=0.0804 max hv=9442 total hv=4.203e+06 (1s)
+  pH   12    1 mM: TEL mid=0.269 avg=0.269 centre/wall=0.0000 max hv=1.534e+04 total hv=1.715e+06 (1s)
+  pH   12   10 mM: TEL mid=0.713 avg=0.713 centre/wall=0.0011 max hv=1.83e+04 total hv=5.505e+06 (0s)
+
+res=1.0: 27 x 42 cells, wall cell 0.0400 um
+  pH    9    1 mM: TEL mid=4.543 avg=1.274 centre/wall=0.1554 max hv=1448 total hv=9.551e+05 (3s)
+  pH    9   10 mM: TEL mid=2.678 avg=1.543 centre/wall=0.0776 max hv=1.012e+04 total hv=4.21e+06 (3s)
+  pH   12    1 mM: TEL mid=0.247 avg=0.247 centre/wall=0.0000 max hv=1.59e+04 total hv=1.561e+06 (2s)
+  pH   12   10 mM: TEL mid=0.549 avg=0.549 centre/wall=0.0003 max hv=1.9e+04 total hv=5.468e+06 (2s)
+
+res=2.0: 53 x 73 cells, wall cell 0.0200 um
+  pH    9    1 mM: TEL mid=4.525 avg=1.143 centre/wall=0.1453 max hv=1503 total hv=9.523e+05 (15s)
+  pH    9   10 mM: TEL mid=2.664 avg=1.390 centre/wall=0.0715 max hv=1.042e+04 total hv=4.21e+06 (15s)
+  pH   12    1 mM: TEL mid=0.200 avg=0.200 centre/wall=0.0000 max hv=1.617e+04 total hv=1.48e+06 (8s)
+  pH   12   10 mM: TEL mid=0.477 avg=0.477 centre/wall=0.0001 max hv=1.946e+04 total hv=5.441e+06 (7s)
+
+res=3.0: 80 x 111 cells, wall cell 0.0133 um
+  pH    9    1 mM: TEL mid=4.265 avg=1.102 centre/wall=0.1440 max hv=1512 total hv=9.516e+05 (46s)
+  pH    9   10 mM: TEL mid=2.659 avg=1.343 centre/wall=0.0726 max hv=1.057e+04 total hv=4.209e+06 (50s)
+  pH   12    1 mM: TEL mid=0.185 avg=0.185 centre/wall=0.0000 max hv=1.625e+04 total hv=1.453e+06 (22s)
+  pH   12   10 mM: TEL mid=0.455 avg=0.455 centre/wall=0.0001 max hv=1.963e+04 total hv=5.431e+06 (22s)
+
+Relative change vs finest level:
+  pH 9 1 mM res 0.5 vs 3.0: dTEL=+7.7%  dTotalHv=+1.3%  dMaxHv=-12.6%
+  pH 9 1 mM res 1.0 vs 3.0: dTEL=+6.5%  dTotalHv=+0.4%  dMaxHv=-4.3%
+  pH 9 1 mM res 2.0 vs 3.0: dTEL=+6.1%  dTotalHv=+0.1%  dMaxHv=-0.6%
+  pH 9 10 mM res 0.5 vs 3.0: dTEL=+21.9%  dTotalHv=-0.1%  dMaxHv=-10.7%
+  pH 9 10 mM res 1.0 vs 3.0: dTEL=+0.7%  dTotalHv=+0.0%  dMaxHv=-4.2%
+  pH 9 10 mM res 2.0 vs 3.0: dTEL=+0.2%  dTotalHv=+0.0%  dMaxHv=-1.4%
+  pH 12 1 mM res 0.5 vs 3.0: dTEL=+45.7%  dTotalHv=+18.1%  dMaxHv=-5.6%
+  pH 12 1 mM res 1.0 vs 3.0: dTEL=+34.0%  dTotalHv=+7.5%  dMaxHv=-2.2%
+  pH 12 1 mM res 2.0 vs 3.0: dTEL=+8.2%  dTotalHv=+1.9%  dMaxHv=-0.5%
+  pH 12 10 mM res 0.5 vs 3.0: dTEL=+56.8%  dTotalHv=+1.4%  dMaxHv=-6.8%
+  pH 12 10 mM res 1.0 vs 3.0: dTEL=+20.9%  dTotalHv=+0.7%  dMaxHv=-3.2%
+  pH 12 10 mM res 2.0 vs 3.0: dTEL=+5.0%  dTotalHv=+0.2%  dMaxHv=-0.9%
