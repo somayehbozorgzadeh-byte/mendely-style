@@ -1,124 +1,213 @@
 """
-Reaction-diffusion simulation of the luminol/H2O2 ECL layer inside a gold
-microtube electrode (Zhou, Hu, Guo, Su, Fundamental Research 2, 682 (2022)).
+Time-dependent 2D-axisymmetric reaction-diffusion simulation of ECL from
+luminol/H2O2 at a gold microtube electrode (MTE), following the COMSOL model in
+the Supporting Information (Section 9, eqs S1-S22, Table S2) of
 
-Top view = 2D disc, radius R, uniform along the tube axis, so the problem is
-radially symmetric: 1D cylindrical reaction-diffusion, species injected at the
-wall (r = R), no-flux at the centre. Steady state, solved with solve_bvp.
+    Zhou, Hu, Guo, Su, Fundamental Research 2, 682 (2022).
 
-Route I  (low pH):  LH. + LH. -> L (+LH2)      k1 = 1.8e9 M-1 s-1  (paper)
-                    L + HO2-  -> LO2^2- -> hv   k2 = 5.0e7 M-1 s-1  (paper)
-                    emission rate = k2 [HO2-] [L]
-Route II (high pH): L.- and O2.- are short-lived (tau ~ 40 ms, paper) and react
-                    at the wall: L.- + O2.- -> LO2^2- -> hv
-                    emission rate = k3 [L.-][O2.-]   (k3 ASSUMED, only shapes
-                    the normalised profile, not its width)
+Geometry (Fig. S12): tube interior r < r_i for 0 < z < L is electrolyte, the
+electrode is the wall r = r_i (0 < z < L); r_i < r < r_o, z < L is insulating
+membrane; above z = L the electrolyte is open and the outer/top boundaries are
+held at bulk concentrations.  A 1 s potential pulse is simulated; the ECL
+image is the photon count  h_nu = int(rate dt)  accumulated over the pulse.
+
+Low pH  (Route I):  HO2- -> O2.- (k1) ; LH- -> LH. (k2) at the wall
+                    LH. + LH. -> LH2 + L (k3) ; L + HO2- -> LO2^2- (k4) -> hv (k5)
+High pH (Route II): HO2- -> O2.- (k1), O2.- -> O2 (k6), LH- -> L.- (k2) at the wall
+                    L.- + O2.- -> LO2^2- (k7) -> hv (k5)
+
+Assumptions beyond the SI text (flagged in README): H2O2 pKa = 11.6 for
+[HO2-]; luminol fully present as LH-; L diffuses (S10 prints no Laplacian);
+LO2^2- (k5 = 2e5 1/s) treated as quasi-steady so photon rate = k4[L][HO2-]
+(Route I) or k7[L.-][O2.-] (Route II); the wall flux uses the concentration
+at half a cell from the wall corrected for the diffusion resistance of that
+half cell.
+Units: um, s, uM.
 """
 import numpy as np
-from scipy.integrate import solve_bvp
+import scipy.sparse as sp
+from scipy.integrate import solve_ivp
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-D = 5e-6 * 1e-4 * 1e12          # 5e-6 cm2/s -> um2/s  (paper)
-R = 9.05                        # um, inner radius (ID = 18.1 um, paper)
-K1, K2 = 1.8e9, 5.0e7           # M-1 s-1 (paper)
-K3 = 1e9                        # M-1 s-1 (assumed)
-TAU = 0.040                     # s, radical lifetime (paper)
-PKA_H2O2 = 11.6                 # H2O2 <-> HO2- (literature)
-J = 1e5                         # uM*um/s wall flux ~ D*c_bulk/delta for 1 mM luminol (estimate)
+# ---- Table S2 -------------------------------------------------------------
+RO, RI, LT = 10.25, 9.05, 10.7            # um
+DL, DH = 6.6e-6 * 1e8, 1e-5 * 1e8         # cm2/s -> um2/s
+K1, K2, K6 = 1e-3 * 1e4, 1.2e-3 * 1e4, 1.0 * 1e4   # cm/s -> um/s
+M = 1e-6                                   # M-1 s-1 -> uM-1 s-1
+K3, K4, K7 = 1.8e9 * M, 5e7 * M, 2.3e8 * M
+C_LH = 1000.0                              # uM luminol (as LH-)
+PKA_H2O2 = 11.6                            # assumed
+ZTOP, T_PULSE = 35.0, 1.0                  # um above tube mouth, s
 
-def ho2(ph, h2o2_M):
-    return h2o2_M / (1 + 10 ** (PKA_H2O2 - ph))
+def hmax(ph, h2o2_mM):
+    return h2o2_mM * 1e3 / (1 + 10 ** (PKA_H2O2 - ph))     # uM HO2-
 
-def solve(rhs, nvar, bc_wall):
-    r = np.linspace(1e-3, R, 400)
-    def f(r, y):  # y = [c1, c1', c2, c2', ...]
-        out = []
-        for i in range(nvar):
-            out += [y[2*i+1], rhs(i, y[0::2], y)[0] - y[2*i+1] / r]
-        return np.array(out)
-    def bc(ya, yb):
-        res = []
-        for i in range(nvar):
-            res += [ya[2*i+1], yb[2*i+1] - bc_wall[i]]
-        return np.array(res)
-    y0 = np.ones((2*nvar, r.size)) * 1e-3
-    return solve_bvp(f, bc, r, y0, tol=1e-6, max_nodes=200000)
+# ---- grid -------------------------------------------------------------------
+def graded(n_ref, d0, g, total, from_end):
+    w, x = [], 0.0
+    d = d0
+    while x + d < total * 0.999 and len(w) < n_ref:
+        w.append(d); x += d; d *= g
+    rest = total - x
+    n_rest = max(1, int(np.ceil(rest / 0.9)))
+    w += [rest / n_rest] * n_rest
+    return np.array(w[::-1] if from_end else w)
 
-def route1(ph, h2o2_mM):
-    """Concentration unit: M (flux J in M*um/s per um^2 scale, arbitrary)."""
-    kq = K2 * ho2(ph, h2o2_mM * 1e-3)            # s-1, L consumption
-    def rhs(i, c, y):
-        lh, l = np.maximum(c[0], 0), np.maximum(c[1], 0)
-        if i == 0:   return [(2 * K1 * lh**2) / D * 1e0, 0]   # LH. loss
-        return [(kq * l - K1 * lh**2) / D, 0]                  # L balance
-    # scale: use micromolar to keep numbers sane
-    return rhs, kq
+def build():
+    wr = graded(60, 0.04, 1.18, RI, True)                    # fine at the wall
+    r_e = np.r_[0, np.cumsum(wr)]
+    r_e = np.r_[r_e, np.linspace(RI, RO, 5)[1:]]
+    z_in = np.linspace(0, LT, 22)
+    z_out = LT + np.cumsum(np.r_[graded(40, 0.5, 1.2, ZTOP, False)])
+    z_e = np.r_[z_in, z_out]
+    rc, zc = 0.5 * (r_e[1:] + r_e[:-1]), 0.5 * (z_e[1:] + z_e[:-1])
+    dr, dz = np.diff(r_e), np.diff(z_e)
+    return r_e, z_e, rc, zc, dr, dz
 
-def run_route1(ph, h2o2_mM):
-    kq = K2 * ho2(ph, h2o2_mM * 1e-3)            # s-1
-    k1 = K1 * 1e-6                               # per uM per s
-    def rhs(i, c, y):
-        lh, l = np.maximum(c[0], 0), np.maximum(c[1], 0)
-        if i == 0:
-            return [2 * k1 * lh**2 / D]
-        return [(kq * l - k1 * lh**2) / D]
-    sol = solve(rhs, 2, [J / D, 0.0])           # LH. injected, L no-flux
-    L = np.maximum(sol.sol(sol.x)[2], 0)
-    return sol.x, kq * L, kq
+def operators(r_e, z_e, rc, zc, dr, dz):
+    nr, nz = rc.size, zc.size
+    idx = lambda i, j: i * nz + j
+    solid = np.zeros((nr, nz), bool)
+    for i in range(nr):
+        for j in range(nz):
+            solid[i, j] = rc[i] > RI and zc[j] < LT
+    vol = np.pi * (r_e[1:]**2 - r_e[:-1]**2)[:, None] * dz[None, :]
+    rows, cols, vals = [], [], []
+    bvec = np.zeros(nr * nz)                 # Dirichlet coupling (bulk)
+    diag = np.zeros(nr * nz)
+    def link(a, b, area, dist):
+        g = area / dist
+        for p, q in ((a, b), (b, a)):
+            rows.append(p[0]); cols.append(q[0]); vals.append(g / vol_f[p[1]])
+            diag[p[0]] -= g / vol_f[p[1]]
+    vol_f = vol.ravel()
+    for i in range(nr):
+        for j in range(nz):
+            if solid[i, j]:
+                continue
+            a = (idx(i, j), idx(i, j))
+            if i + 1 < nr and not solid[i + 1, j]:
+                area = 2 * np.pi * r_e[i + 1] * dz[j]
+                link((idx(i, j), idx(i, j)), (idx(i + 1, j), idx(i + 1, j)), area, rc[i + 1] - rc[i])
+            if j + 1 < nz and not solid[i, j + 1]:
+                area = np.pi * (r_e[i + 1]**2 - r_e[i]**2)
+                link((idx(i, j), idx(i, j)), (idx(i, j + 1), idx(i, j + 1)), area, zc[j + 1] - zc[j])
+    # fix duplicated link() accumulation: each pair processed once above (i+1, j+1 only)
+    for i in range(nr):
+        for j in range(nz):
+            if solid[i, j]:
+                continue
+            k = idx(i, j)
+            if j == nz - 1:                               # top: bulk
+                area = np.pi * (r_e[i + 1]**2 - r_e[i]**2); g = area / (0.5 * dz[j])
+                diag[k] -= g / vol[i, j]; bvec[k] += g / vol[i, j]
+            if i == nr - 1 and zc[j] >= LT:               # side above mouth: bulk
+                area = 2 * np.pi * r_e[i + 1] * dz[j]; g = area / (0.5 * dr[i])
+                diag[k] -= g / vol[i, j]; bvec[k] += g / vol[i, j]
+    Lap = sp.csr_matrix((vals, (rows, cols)), shape=(nr * nz, nr * nz)) + sp.diags(diag)
+    # electrode: last interior column (r < RI) next to solid, z < LT
+    iw = np.where(rc < RI)[0].max()
+    wall = np.zeros(nr * nz); keff_fac = np.zeros(nr * nz)
+    for j in range(nz):
+        if zc[j] < LT:
+            k = idx(iw, j)
+            wall[k] = 2 * RI * dz[j] * np.pi / vol[iw, j]       # (area/volume)
+            keff_fac[k] = 0.5 * (RI - rc[iw])                  # half-cell distance
+    return Lap.tocsr(), bvec, wall, keff_fac, solid.ravel(), vol.ravel(), iw
 
-def run_route2():
-    kd = 1 / TAU
-    def rhs(i, c, y):
-        return [kd * np.maximum(c[i], 0) / D]
-    sol = solve(rhs, 2, [J / D, J / D])
-    a, b = np.maximum(sol.sol(sol.x)[0], 0), np.maximum(sol.sol(sol.x)[2], 0)
-    return sol.x, a * b
+def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1):
+    r_e, z_e, rc, zc, dr, dz = grid or build()
+    Lap, bvec, wall, hres, solid, vol, iw = operators(r_e, z_e, rc, zc, dr, dz)
+    n = rc.size * zc.size
+    fl = ~solid
+    hb = hmax(ph, h2o2_mM)
+    kw = lambda k, D: np.where(wall > 0, k / (1 + k * hres / D), 0.0)   # effective wall k
+    k1w, k2w, k6w = kw(K1, DH), kw(K2, DL), kw(K6, DH)
+    if route == 1:      # LH-, LH., L, HO2-, hv
+        names = ["LH-", "LH.", "L", "HO2-", "hv"]
+        bulk = [C_LH, 0, 0, hb, 0]
+    else:               # LH-, L.-, HO2-, O2.-, hv
+        names = ["LH-", "L.-", "HO2-", "O2.-", "hv"]
+        bulk = [C_LH, 0, hb, 0, 0]
+    ns = 5
+    y0 = np.zeros(ns * n)
+    for s in range(ns):
+        y0[s*n:(s+1)*n] = np.where(fl, bulk[s], 0.0)
+    D = [DL, DL, DL, DH, 0] if route == 1 else [DL, DL, DH, DH, 0]
 
-def tel(x, I, frac=np.exp(-1)):
-    """distance from the wall at which normalised intensity falls to 1/e."""
-    I = I / I.max()
-    below = np.where(I < frac)[0]
-    return R - x[below.max()] if below.size else R
+    def rhs(t, y):
+        Y = y.reshape(ns, n); out = np.zeros_like(Y)
+        for s in range(4):
+            out[s] = D[s] * (Lap @ Y[s] + bvec * bulk[s])
+        if route == 1:
+            lhm, lh, L, ho, _ = Y
+            out[0] -= k2w * wall * lhm
+            out[1] += k2w * wall * lhm - K3 * lh * lh
+            out[2] += K3 * lh * lh - K4 * L * ho
+            out[3] += -k1w * wall * ho - K4 * L * ho
+            out[4] = K4 * L * ho
+        else:
+            lhm, Lr, ho, o2, _ = Y
+            rate = K7 * Lr * o2
+            out[0] -= k2w * wall * lhm
+            out[1] += k2w * wall * lhm - rate
+            out[2] += -k1w * wall * ho
+            out[3] += k1w * wall * ho - k6w * wall * o2 - rate
+            out[4] = rate
+        out[:, solid] = 0
+        return out.ravel()
 
-def disc(x, I, n=301):
-    g = np.linspace(-R, R, n); X, Y = np.meshgrid(g, g)
-    return X, Y, np.where(X**2 + Y**2 <= R**2, np.interp(np.hypot(X, Y), x, I), np.nan)
+    # sparsity: local coupling between species + Laplacian stencil
+    S = sp.kron(sp.csr_matrix(np.ones((ns, ns))), (abs(Lap) + sp.eye(n)) > 0, format="csr")
+    sol = solve_ivp(rhs, (0, t_end), y0, method="BDF", jac_sparsity=S,
+                    rtol=1e-5, atol=1e-9, t_eval=[t_end])
+    Y = sol.y[:, -1].reshape(ns, n)
+    return dict(hv=Y[4].reshape(rc.size, zc.size), Y=Y, names=names, grid=(r_e, z_e, rc, zc, dr, dz),
+                iw=iw, ok=sol.success)
+
+def top_view(res, mode="mid"):
+    """Radial ECL profile inside the tube: mid-height (default, away from the
+    open mouth where reagents are replenished) or averaged over tube depth."""
+    r_e, z_e, rc, zc, dr, dz, = res["grid"]
+    iw = res["iw"]; zin = zc < LT
+    if mode == "mid":
+        return rc[:iw + 1], res["hv"][:iw + 1, np.argmin(abs(zc - LT / 2))]
+    prof = (res["hv"][:iw + 1][:, zin] * dz[zin][None, :]).sum(axis=1) / LT
+    return rc[:iw + 1], prof
+
+def tel(r, prof, frac=np.exp(-1)):
+    p = prof / prof.max(); below = np.where(p < frac)[0]
+    return RI - r[below.max()] if below.size else RI
 
 if __name__ == "__main__":
-    out = {}
-    # Fig 5 analogue: low pH (Route I, pH 9, 10 mM H2O2) vs high pH (Route II)
-    x1, I1, kq = run_route1(9.0, 10.0)
-    x2, I2 = run_route2()
-    print(f"Route I  pH 9, 10 mM H2O2: kq={kq:.0f} s-1, TEL(1/e)={tel(x1,I1):.2f} um")
-    print(f"Route II               : TEL(1/e)={tel(x2,I2):.2f} um, "
-          f"diffusion length (D*tau)^0.5={np.sqrt(D*TAU):.1f} um")
-
+    grid = build()
+    runs = {}
+    for ph, route, lab in ((9.0, 1, "low pH 9 (Route I)"), (12.0, 2, "high pH 12 (Route II)")):
+        for c in (0.1, 1.0, 10.0):
+            res = simulate(ph, c, route, grid)
+            r, p = top_view(res); runs[(ph, c)] = (r, p, res)
+            ra, pa = top_view(res, "avg")
+            print(f"{lab:24s} H2O2={c:5.1f} mM  ok={res['ok']}  TEL(1/e) mid-height={tel(r,p):5.2f} um, "
+                  f"depth-avg={tel(ra,pa):5.2f} um  centre/wall={p[0]/p.max():.3f}  max hv={res['hv'].max():.3g}")
     fig, ax = plt.subplots(2, 3, figsize=(13, 8))
-    for a, (x, I, t) in zip(ax[0, :2], [(x1, I1, "Route I (low pH)"), (x2, I2, "Route II (high pH)")]):
-        X, Y, Z = disc(x, I / I.max()); m = a.pcolormesh(X, Y, Z, shading="auto", cmap="viridis")
-        a.set_aspect("equal"); a.set_title(t); plt.colorbar(m, ax=a, label="norm. ECL")
-    for x, I, lab, mk in [(x1, I1, "Low pH (Route I)", "k-o"), (x2, I2, "High pH (Route II)", "-o")]:
-        r_all = np.r_[-x[::-1], x]; I_all = np.r_[I[::-1], I] / I.max()
-        ax[0, 2].plot(r_all, I_all, label=lab)
-    ax[0, 2].set_xlabel("Position / um"); ax[0, 2].set_ylabel("Normalised intensity"); ax[0, 2].legend()
-    ax[0, 2].set_title("Radial profiles (cf. paper Fig. 5c)")
-
-    # Fig 6g analogue: Route I, effect of [H2O2]
-    for c in (0.1, 1, 10):
-        x, I, _ = run_route1(9.0, c); out[c] = tel(x, I)
-        ax[1, 0].plot(np.r_[-x[::-1], x], np.r_[I[::-1], I] / I.max(), label=f"{c} mM H2O2")
-    ax[1, 0].set_title("Route I, pH 9: effect of [H2O2] (cf. Fig. 6g)")
-    ax[1, 0].set_xlabel("Position / um"); ax[1, 0].set_ylabel("Normalised intensity"); ax[1, 0].legend()
-    print("Route I TEL vs [H2O2] (mM):", {k: round(v, 2) for k, v in out.items()})
-
-    # TEL vs pH (Route I only), 1 mM luminol / 10 mM H2O2
-    phs = np.arange(7, 12.1, 0.5)
-    tels = [tel(*run_route1(p, 10.0)[:2]) for p in phs]
-    ax[1, 1].plot(phs, tels, "o-"); ax[1, 1].set_xlabel("pH"); ax[1, 1].set_ylabel("TEL (1/e)  / um")
-    ax[1, 1].set_title("Route I: TEL vs pH (HO2- consumption of L)")
+    for k, (ph, ttl) in enumerate(((9.0, "Low pH (9), 10 mM H2O2"), (12.0, "High pH (12), 10 mM H2O2"))):
+        r, p, res = runs[(ph, 10.0)]
+        g = np.linspace(-RI, RI, 301); X, Y = np.meshgrid(g, g)
+        Z = np.where(np.hypot(X, Y) <= RI, np.interp(np.hypot(X, Y), r, p / p.max()), np.nan)
+        m = ax[0, k].pcolormesh(X, Y, Z, shading="auto", cmap="viridis"); ax[0, k].set_aspect("equal")
+        ax[0, k].set_title(ttl + " (top view)"); plt.colorbar(m, ax=ax[0, k], label="norm. ECL")
+    for ph, ls in ((9.0, "-"), (12.0, "--")):
+        r, p, _ = runs[(ph, 10.0)]
+        ax[0, 2].plot(np.r_[-r[::-1], r], np.r_[p[::-1], p] / p.max(), ls, label=f"pH {ph:g}")
+    ax[0, 2].set_title("Radial profiles (cf. Fig. 5c)"); ax[0, 2].legend()
+    for k, ph in enumerate((9.0, 12.0)):
+        for c in (0.1, 1.0, 10.0):
+            r, p, _ = runs[(ph, c)]
+            ax[1, k].plot(np.r_[-r[::-1], r], np.r_[p[::-1], p] / p.max(), label=f"{c:g} mM H2O2")
+        ax[1, k].set_title(f"pH {ph:g}: effect of [H2O2] (cf. Fig. 6{'g' if ph==9 else 'h'})"); ax[1, k].legend()
+    for a in ax.ravel()[2:]: a.set_xlabel("Position / um")
     ax[1, 2].axis("off")
-    ax[1, 2].text(0, 0.5, "Parameters from paper: D=5e-6 cm2/s,\nk1=1.8e9, k2=5e7 M-1s-1, tau(O2.-)=40 ms,\nID=18.1 um.\nAssumed: pKa(H2O2)=11.6, k3=1e9,\nL.- lifetime = O2.- lifetime.", fontsize=10, va="center")
-    plt.tight_layout(); plt.savefig("ecl_simulation.png", dpi=130)
-    print("saved ecl_simulation.png")
+    ax[1, 2].text(0, 0.5, "Model: SI Section 9 / Table S2\n2D axisymmetric, 1 s pulse\nAssumed: pKa(H2O2)=11.6, L diffuses,\nquasi-steady LO2(2-)", va="center")
+    plt.tight_layout(); plt.savefig("ecl_simulation.png", dpi=130); print("saved")
