@@ -1,0 +1,11 @@
+variant                                         pH max hv/mM ctr/edge(mid) ctr/edge(avg)  TEL5%  TEL1%
+PAPER (10 mM H2O2)                              9      ~10          ~0.2(5a)                >9.1 (cut-off)
+                                               12      ~30          ~0          ~0.0           ca. 4.1 (cut-off)
+A  pKa 11.6, L diffuses (my default)             9     10.42         0.072         0.017   9.05   9.05
+A  pKa 11.6, L diffuses (my default)            12     19.46         0.000         0.000   1.85   3.18
+B  [HO2-]=c0(H2O2), L diffuses                   9     39.38         0.000         0.000   0.93   1.68
+B  [HO2-]=c0(H2O2), L diffuses                  12     20.30         0.001         0.001   1.85   3.80
+C  [HO2-]=c0(H2O2), L fixed (S10 literal)        9     45.68         0.000         0.000   0.84   1.68
+C  [HO2-]=c0(H2O2), L fixed (S10 literal)       12     20.30         0.001         0.001   1.85   3.80
+D  pKa 11.6, L fixed                             9     45.12         0.009         0.001   3.80   6.96
+D  pKa 11.6, L fixed                            12     19.46         0.000         0.000   1.85   3.18
