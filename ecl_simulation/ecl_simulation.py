@@ -41,8 +41,9 @@ C_LH = 1000.0                              # uM luminol (as LH-)
 PKA_H2O2 = 11.6                            # assumed
 ZTOP, T_PULSE = 35.0, 1.0                  # um above tube mouth, s
 
-def hmax(ph, h2o2_mM):
-    return h2o2_mM * 1e3 / (1 + 10 ** (PKA_H2O2 - ph))     # uM HO2-
+def hmax(ph, h2o2_mM, pka=None):
+    pka = PKA_H2O2 if pka is None else pka
+    return h2o2_mM * 1e3 / (1 + 10 ** (pka - ph))     # uM HO2-
 
 # ---- grid -------------------------------------------------------------------
 def graded(n_ref, d0, g, total, from_end, coarse=0.9):
@@ -119,12 +120,13 @@ def operators(r_e, z_e, rc, zc, dr, dz):
             keff_fac[k] = 0.5 * (RI - rc[iw])                  # half-cell distance
     return Lap.tocsr(), bvec, wall, keff_fac, solid.ravel(), vol.ravel(), iw
 
-def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1):
+def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1, pka=None, dL_L=1.0):
+    """pka: H2O2 pKa (default PKA_H2O2); dL_L: Route-I L diffusion coefficient as a fraction of D_L (0 = no L diffusion, as eq. S10 is printed)."""
     r_e, z_e, rc, zc, dr, dz = grid or build()
     Lap, bvec, wall, hres, solid, vol, iw = operators(r_e, z_e, rc, zc, dr, dz)
     n = rc.size * zc.size
     fl = ~solid
-    hb = hmax(ph, h2o2_mM)
+    hb = hmax(ph, h2o2_mM, pka)
     kw = lambda k, D: np.where(wall > 0, k / (1 + k * hres / D), 0.0)   # effective wall k
     k1w, k2w, k6w = kw(K1, DH), kw(K2, DL), kw(K6, DH)
     if route == 1:      # LH-, LH., L, HO2-, hv
@@ -137,7 +139,7 @@ def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1):
     y0 = np.zeros(ns * n)
     for s in range(ns):
         y0[s*n:(s+1)*n] = np.where(fl, bulk[s], 0.0)
-    D = [DL, DL, DL, DH, 0] if route == 1 else [DL, DL, DH, DH, 0]
+    D = [DL, DL, DL * dL_L, DH, 0] if route == 1 else [DL, DL, DH, DH, 0]
 
     def rhs(t, y):
         Y = y.reshape(ns, n); out = np.zeros_like(Y)
