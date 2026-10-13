@@ -120,7 +120,7 @@ def operators(r_e, z_e, rc, zc, dr, dz):
             keff_fac[k] = 0.5 * (RI - rc[iw])                  # half-cell distance
     return Lap.tocsr(), bvec, wall, keff_fac, solid.ravel(), vol.ravel(), iw
 
-def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1, pka=None, dL_L=1.0, ho_wall=None):
+def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1, pka=None, dL_L=1.0, ho_wall=None, k4_scale=1.0):
     """pka: H2O2 pKa (default PKA_H2O2); dL_L: Route-I L diffusion coefficient as a fraction of D_L (0 = no L diffusion, as eq. S10 is printed).
     ho_wall: None = SI as printed (HO2- consumed at the wall, eq. S7/S17); 'noflux' = no wall consumption of HO2-;
     'dirichlet' = [HO2-] pinned at its bulk value in the wall cell."""
@@ -129,6 +129,7 @@ def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1, pka=None, dL
     n = rc.size * zc.size
     fl = ~solid
     hb = hmax(ph, h2o2_mM, pka)
+    k4 = K4 * k4_scale                       # Route I L + HO2- rate constant (scan parameter)
     kw = lambda k, D: np.where(wall > 0, k / (1 + k * hres / D), 0.0)   # effective wall k
     k1w, k2w, k6w = kw(K1, DH), kw(K2, DL), kw(K6, DH)
     if route == 1:      # LH-, LH., L, HO2-, hv
@@ -151,10 +152,10 @@ def simulate(ph, h2o2_mM, route, grid=None, t_end=T_PULSE, n_out=1, pka=None, dL
             lhm, lh, L, ho, _ = Y
             out[0] -= k2w * wall * lhm
             out[1] += k2w * wall * lhm - K3 * lh * lh
-            out[2] += K3 * lh * lh - K4 * L * ho
-            out[3] += -(0 if ho_wall else 1) * k1w * wall * ho - K4 * L * ho
+            out[2] += K3 * lh * lh - k4 * L * ho
+            out[3] += -(0 if ho_wall else 1) * k1w * wall * ho - k4 * L * ho
             if ho_wall == 'dirichlet': out[3] += 1e7 * (wall > 0) * (hb - ho)
-            out[4] = K4 * L * ho
+            out[4] = k4 * L * ho
         else:
             lhm, Lr, ho, o2, _ = Y
             rate = K7 * Lr * o2
