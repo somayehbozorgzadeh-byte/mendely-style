@@ -1,0 +1,9 @@
+Dirichlet HO2- at wall, pH 9, 10 mM; peak hv (mM), wall z=5 (mM), ctr/edge (mid-height) vs pulse time and k4 (1x mesh)
+k4=5.0e+06 t=  1s: peak   4.83  wall(z=5)   4.78  ctr/edge 0.090
+k4=5.0e+06 t=  2s: peak   9.51  wall(z=5)   9.43  ctr/edge 0.091
+k4=5.0e+06 t=  4s: peak  18.88  wall(z=5)  18.74  ctr/edge 0.092
+k4=5.0e+06 t=  8s: peak  37.62  wall(z=5)  37.37  ctr/edge 0.092
+k4=1.5e+06 t=  1s: peak   3.20  wall(z=5)   3.00  ctr/edge 0.183
+k4=1.5e+06 t=  2s: peak   6.39  wall(z=5)   5.99  ctr/edge 0.186
+k4=1.5e+06 t=  4s: peak  12.75  wall(z=5)  11.96  ctr/edge 0.187
+k4=1.5e+06 t=  8s: peak  25.48  wall(z=5)  23.91  ctr/edge 0.187
